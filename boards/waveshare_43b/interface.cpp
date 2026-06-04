@@ -111,7 +111,14 @@ int getBattery() {
 ** location: settings.cpp
 ** Backlight is a simple on/off via the CH422G expander (no PWM line).
 **********************************************************************/
-void _setBrightness(uint8_t brightval) { ch422g_set(CH422G_BIT_DISP, brightval > 0 ? HIGH : LOW); }
+void _setBrightness(uint8_t brightval) {
+    // The 4.3B backlight is on/off only (CH422G expander, no PWM), and waking
+    // it back from off is unreliable due to I2C noise from the RGB panel.
+    // The board is USB-powered, so keep the backlight on while running rather
+    // than risk an unrecoverable dark screen.
+    (void)brightval;
+    ch422g_set(CH422G_BIT_DISP, HIGH);
+}
 
 /*********************************************************************
 ** Function: InputHandler
