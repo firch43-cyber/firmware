@@ -95,11 +95,20 @@ static const uint8_t SCL = GROVE_SCL;
 #define TOUCH_INT  4          // GT911 INT (direct GPIO)
 // TP_RST is on the CH422G expander (CH422G_BIT_TP_RST), not a direct GPIO.
 
-// ---- SD card (SPI; CS via expander, so left disabled for now) ---------------
-#define SDCARD_CS    -1
-#define SDCARD_SCK   -1
-#define SDCARD_MISO  -1
-#define SDCARD_MOSI  -1
+// ---- SD card ----------------------------------------------------------------
+// SCK/MISO/MOSI are direct GPIOs.  CS is routed through the CH422G I2C
+// expander (EXIO4, active low) — there is no direct GPIO CS line.
+//
+// Workaround: GPIO6 is an unused pin wired to nothing on the 4.3B; it is
+// used here purely to satisfy the Arduino SPI/SD library, which requires a
+// real GPIO number for CS bookkeeping.  The real hardware CS is held LOW
+// permanently by the expander in _setup_gpio() (see interface.cpp).  Because
+// the SD SPI bus is dedicated (no other devices share it), keeping CS
+// asserted throughout is safe and the SD card responds normally.
+#define SDCARD_CS    6    // dummy GPIO — not connected to SD card HW
+#define SDCARD_SCK   12
+#define SDCARD_MISO  13
+#define SDCARD_MOSI  11
 
 // ---- Misc / radios: not populated on a bare 4.3B; disable to avoid conflicts -
 #define SPI_SS_PIN    -1

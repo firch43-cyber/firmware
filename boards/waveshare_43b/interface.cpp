@@ -64,6 +64,13 @@ void _setup_gpio() {
     // Turn the LCD backlight on (EXIO2/LCD_BL).
     ch422g_set(CH422G_BIT_DISP, HIGH);
 
+    // Assert SD card CS via the expander (EXIO4, active low).
+    // The SD SPI bus is dedicated — no other device shares it — so holding CS
+    // permanently LOW is safe.  This lets the Arduino SD library use GPIO6
+    // (SDCARD_CS, a dummy unconnected pin) for its own bookkeeping while the
+    // real hardware CS line is always asserted.
+    ch422g_set(CH422G_BIT_SD_CS, LOW);
+
 #if defined(HAS_CAPACITIVE_TOUCH) && defined(TOUCH_GT911_I2C)
     // GT911 reset sequence. TP_RST is on the expander (EXIO1); INT is a real GPIO.
     // Holding INT low across the RST rising edge selects I2C address 0x5D.
@@ -193,12 +200,7 @@ void InputHandler(void) {
 #endif
 }
 
-/*********************************************************************
-** Function: keyboard
-** location: mykeyboard.cpp
-** Starts keyboard to type data
-**********************************************************************/
-String keyboard(String mytext, int maxSize, String msg) { return mytext; }
+// keyboard() NOT overridden here — the full generalKeyboard() in mykeyboard.cpp is used.
 
 /*********************************************************************
 ** Function: powerOff
