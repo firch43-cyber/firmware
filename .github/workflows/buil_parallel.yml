@@ -9,6 +9,9 @@ on:
       - "*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   compile_sketch:
     name: Build ${{ matrix.board.env }}
@@ -318,7 +321,7 @@ jobs:
           tree
 
       - name: Create Release ${{ steps.bruce_version.outputs.version }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           name: Bruce Release ${{ steps.bruce_version.outputs.version }}
           tag_name: ${{ steps.bruce_version.outputs.version }}
