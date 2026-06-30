@@ -34,8 +34,10 @@ void RFScan::setup() {
 
 void RFScan::loop() {
     while (1) {
-        if (check(EscPress) || returnToMenu) return;
-        if (check(NextPress)) {
+        // BACK (PrevPress) and swipe-down (EscPress) both exit; SELECT
+        // (SelPress) and NEXT (NextPress) both open the options menu.
+        if (check(EscPress) || check(PrevPress) || returnToMenu) return;
+        if (check(NextPress) || check(SelPress)) {
             select_menu_option();
             if (returnToMenu) return;
             return setup();
@@ -46,8 +48,8 @@ void RFScan::loop() {
         if (frequency <= 0) init_freqs();
 
         while (frequency <= 0) { // FastScan
-            if (check(EscPress) || returnToMenu) return;
-            if (check(NextPress)) {
+            if (check(EscPress) || check(PrevPress) || returnToMenu) return;
+            if (check(NextPress) || check(SelPress)) {
                 select_menu_option();
                 if (returnToMenu) return;
                 return setup();
