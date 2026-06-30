@@ -268,7 +268,6 @@ void boot_screen() {
  **  Draw boot screen
  *********************************************************************/
 void boot_screen_anim() {
-    boot_screen();
     int i = millis();
     // checks for boot.jpg in SD and LittleFS for customization
     int boot_img = 0;
@@ -281,9 +280,23 @@ void boot_screen_anim() {
     else if (boot_img == 0 && LittleFS.exists("/boot.gif")) boot_img = 4;
     if (bruceConfig.theme.boot_img) boot_img = 5; // override others
 #ifdef BOOT_IMG_EMBEDDED
-    if (boot_img == 0) boot_img = 6; // embedded shark splash (no SD card needed)
+    if (boot_img == 0) {
+        // Embedded splash: draw it immediately (no "Bruce" text intro) and hold
+        // it for ~10s, skippable with a tap. A user /boot.jpg|gif still overrides
+        // (handled above as boot_img 1-5 and the normal loop below).
+        tft.fillScreen(bruceConfig.bgColor);
+        showJpeg(boot_shark_jpg, boot_shark_jpg_len, 0, 0, false);
+        tft.drawPixel(0, 0, 0);
+        while (millis() < i + 10000) {
+            if (check(AnyKeyPress)) break; // tap to skip
+            delay(20);
+        }
+        tft.fillScreen(bruceConfig.bgColor);
+        return;
+    }
 #endif
 
+    boot_screen();
     tft.drawPixel(0, 0, 0);       // Forces back communication with TFT, to avoid ghosting
                                   // Start image loop
     while (millis() < i + 7000) { // boot image lasts for 5 secs
@@ -314,12 +327,6 @@ void boot_screen_anim() {
                     drawImg(LittleFS, "/boot.gif", 0, 0, true, 3600);
                     Serial.println("Image from LittleFS");
                 }
-#ifdef BOOT_IMG_EMBEDDED
-                else if (boot_img == 6) {
-                    showJpeg(boot_shark_jpg, boot_shark_jpg_len, 0, 0, false);
-                    Serial.println("Embedded boot image");
-                }
-#endif
                 tft.drawPixel(0, 0, 0); // Forces back communication with TFT, to avoid ghosting
             }
             drawn = true;
