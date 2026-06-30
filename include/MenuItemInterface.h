@@ -26,6 +26,18 @@ public:
     bool checkTheme() { return hasTheme() && themePath() != ""; }
     String getName() const { return _name; }
 
+    // Position the icon inside a grid cell before calling drawIcon(scale).
+    // cx/cy = cell center, side = bounding square for clearIconArea().
+    void setGridCell(int cx, int cy, int side) {
+        if (rotation == 255) resetCoordinates();
+        iconCenterX = cx;
+        iconCenterY = cy;
+        iconAreaW   = side;
+        iconAreaH   = side;
+        iconAreaX   = cx - side / 2;
+        iconAreaY   = cy - side / 2;
+    }
+
     void draw(float scale = 1) {
         if (rotation != bruceConfigPins.rotation) resetCoordinates();
         if (!checkTheme()) {

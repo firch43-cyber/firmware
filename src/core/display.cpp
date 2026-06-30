@@ -7,6 +7,9 @@
 #include <JPEGDecoder.h>
 #include <interface.h> //for charging ischarging to print charging indicator
 #include <memory>
+#if defined(GRID_MAIN_MENU)
+#include <MenuItemInterface.h>
+#endif
 
 // Row height in the redesigned drawOptions: FG*LH + 8 = 24+8 = 32px
 // Reserve 30px status bar + 54px footer + some padding
@@ -517,6 +520,105 @@ static int16_t submenuPrevY = 0;
 static int16_t submenuSelY  = 0;
 static int16_t submenuNextY = 0;
 
+#if defined(GRID_MAIN_MENU)
+// ---- Android-style icon-grid launcher for the 800×480 main menu ----
+// 4×2 cards per page. Tap a card to launch it; swipe ←/→ flips pages.
+// No BACK/SELECT/NEXT footer — touch does everything, so the grid claims
+// the full content area down to a thin bottom margin (page dots only).
+struct GridGeom {
+    int cols, rows, perPage, gap;
+    int contentTop, contentBot, contentH;
+    int cellW, cellH;
+    int pages, dotArea;
+};
+
+static GridGeom gridGeometry(int n) {
+    GridGeom g;
+    g.cols = 4;
+    g.rows = 2;
+    g.perPage = g.cols * g.rows;
+    g.gap = 8;
+    g.pages = (n + g.perPage - 1) / g.perPage;
+    g.contentTop = BORDER_PAD_Y;
+    g.contentBot = tftHeight - 16;            // thin bottom margin (no footer)
+    g.contentH   = g.contentBot - g.contentTop;
+    g.dotArea    = (g.pages > 1) ? 24 : 0;    // band reserved for page dots
+    int gridH    = g.contentH - g.dotArea;
+    g.cellW = (tftWidth - (g.cols + 1) * g.gap) / g.cols;
+    g.cellH = (gridH    - (g.rows + 1) * g.gap) / g.rows;
+    return g;
+}
+
+static void drawMainGrid(int selIndex, std::vector<Option> &opts) {
+    const int n = (int)opts.size();
+    GridGeom g = gridGeometry(n);
+    const int page   = selIndex / g.perPage;
+    const int labelH = 24;                         // pixels reserved for name text
+    const float ICON_SCALE = float(tftWidth) / 600.0f; // ~1.33 at 800px (looks good)
+
+    // Clear the whole interior below the top status line down to the bottom
+    // edge — this wipes any leftover footer/app pixels. Stay inside the side
+    // frame (x≥6). drawStatusBar() repaints the frame afterwards.
+    tft.fillRect(6, 26, tftWidth - 12, tftHeight - 26, bruceConfig.bgColor);
+
+    for (int row = 0; row < g.rows; row++) {
+        for (int col = 0; col < g.cols; col++) {
+            const int slotIdx = page * g.perPage + row * g.cols + col;
+            if (slotIdx >= n) continue;
+
+            const int cardX = g.gap + col * (g.cellW + g.gap);
+            const int cardY = g.contentTop + g.gap + row * (g.cellH + g.gap);
+            const bool selected = (slotIdx == selIndex);
+
+            // Card outline — bgColor fill keeps icon antialiasing clean
+            tft.fillRoundRect(cardX, cardY, g.cellW, g.cellH, 14, bruceConfig.bgColor);
+
+            if (selected) {
+                // Triple border for ~3 px line weight
+                tft.drawRoundRect(cardX,     cardY,     g.cellW,     g.cellH,     14, bruceConfig.priColor);
+                tft.drawRoundRect(cardX + 1, cardY + 1, g.cellW - 2, g.cellH - 2, 13, bruceConfig.priColor);
+                tft.drawRoundRect(cardX + 2, cardY + 2, g.cellW - 4, g.cellH - 4, 12, bruceConfig.priColor);
+                // Accent bar at top of card
+                tft.fillRect(cardX + 16, cardY, g.cellW - 32, 4, bruceConfig.priColor);
+            } else {
+                tft.drawRoundRect(cardX, cardY, g.cellW, g.cellH, 14, tft.color565(55, 55, 75));
+            }
+
+            // Icon — positioned in the upper portion of the card
+            const int iconAreaSide = g.cellH - labelH - 14;
+            const int iconCX = cardX + g.cellW / 2;
+            const int iconCY = cardY + (g.cellH - labelH) / 2;
+
+            auto *item = static_cast<MenuItemInterface *>(opts[slotIdx].hoverPointer);
+            if (item) {
+                item->setGridCell(iconCX, iconCY, iconAreaSide);
+                item->drawIcon(ICON_SCALE);
+            }
+
+            // Label at bottom of card
+            String lbl = opts[slotIdx].label;
+            if ((int)lbl.length() > 11) lbl = lbl.substring(0, 11);
+            uint16_t lblColor = selected ? bruceConfig.priColor : bruceConfig.secColor;
+            tft.setTextSize(2);
+            tft.setTextColor(lblColor, bruceConfig.bgColor);
+            tft.drawCentreString(lbl, iconCX, cardY + g.cellH - labelH + 2, SMOOTH_FONT);
+        }
+    }
+
+    // Page indicator dots
+    if (g.pages > 1) {
+        const int dotY  = g.contentBot - 8;
+        const int dotSpacing = 20;
+        const int totalW = (g.pages - 1) * dotSpacing;
+        for (int p = 0; p < g.pages; p++) {
+            int dotX = tftWidth / 2 - totalW / 2 + p * dotSpacing;
+            if (p == page) tft.fillCircle(dotX, dotY, 6, bruceConfig.priColor);
+            else           tft.drawCircle(dotX, dotY, 5, bruceConfig.secColor);
+        }
+    }
+}
+#endif // GRID_MAIN_MENU
+
 /*********************************************************************
 **  Function: loopOptions
 **  Where you choose among the options in menu
@@ -595,6 +697,17 @@ int loopOptions(
             options[index].hovered = true;
 
             bool renderedByLambda = false;
+#if defined(GRID_MAIN_MENU)
+            if (menuType == MENU_TYPE_MAIN) {
+                // drawMainGrid() wipes the whole interior (including the old
+                // footer strip), then drawStatusBar() repaints the frame +
+                // top bar on top.  We deliberately DON'T call drawMainBorder()
+                // here because it also draws the BACK/SELECT/NEXT footer.
+                drawMainGrid(index, options);
+                drawStatusBar();
+                renderedByLambda = true;
+            } else
+#endif
             if (options[index].hover)
                 renderedByLambda = options[index].hover(options[index].hoverPointer, true);
 
@@ -637,7 +750,14 @@ int loopOptions(
             int tapY = touchPoint.y;
             touchPoint.Clear();
 
-            if (tapY < tftHeight - 56) {
+            // The grid main menu has no footer, so its taps span the whole
+            // screen — route them all through the content path (below) and
+            // ignore touchHeatMap's footer zones.
+            bool contentTap = (tapY < tftHeight - 56);
+#if defined(GRID_MAIN_MENU)
+            if (menuType == MENU_TYPE_MAIN) contentTap = true;
+#endif
+            if (contentTap) {
                 // Clear zone-mapped flags for content area — we'll set correct ones.
                 SelPress  = false;
                 PrevPress = false;
@@ -684,9 +804,36 @@ int loopOptions(
                     }
 
                 } else if (menuType == MENU_TYPE_MAIN) {
+#if defined(GRID_MAIN_MENU)
+                    // Map tap to grid cell and launch that item directly.
+                    {
+                        const int n = (int)options.size();
+                        GridGeom g  = gridGeometry(n);
+                        const int page = index / g.perPage;
+
+                        int tapCol = -1, tapRow = -1;
+                        for (int c = 0; c < g.cols; c++) {
+                            int cx = g.gap + c * (g.cellW + g.gap);
+                            if (tapX >= cx && tapX < cx + g.cellW) { tapCol = c; break; }
+                        }
+                        for (int r = 0; r < g.rows; r++) {
+                            int cy = g.contentTop + g.gap + r * (g.cellH + g.gap);
+                            if (tapY >= cy && tapY < cy + g.cellH) { tapRow = r; break; }
+                        }
+                        if (tapCol >= 0 && tapRow >= 0) {
+                            int tappedIdx = page * g.perPage + tapRow * g.cols + tapCol;
+                            if (tappedIdx >= 0 && tappedIdx < n && options[tappedIdx].enabled) {
+                                index = tappedIdx;
+                                options[tappedIdx].operation();
+                                exit = true;
+                            }
+                        }
+                    }
+#else
                     if (tapX < tftWidth / 7)            PrevPress = true;
                     else if (tapX > tftWidth * 6 / 7)   NextPress = true;
                     else                                 SelPress  = true;
+#endif
                 }
             }
             // Footer taps: touchHeatMap already set flags correctly — leave them.
@@ -701,6 +848,27 @@ int loopOptions(
             index = -1;
             break;
         }
+
+#if defined(GRID_MAIN_MENU)
+        // On the icon grid, a horizontal swipe (Next/Prev) flips a whole page
+        // and wraps, rather than nudging the highlight a single cell.
+        if (menuType == MENU_TYPE_MAIN) {
+            bool goNext = check(NextPress);
+            bool goPrev = check(PrevPress);
+            if (goNext || goPrev) {
+                const int n = (int)options.size();
+                GridGeom g  = gridGeometry(n);
+                int page = index / g.perPage;
+                if (g.pages > 0) page = goNext ? (page + 1) % g.pages : (page - 1 + g.pages) % g.pages;
+                int newIndex = page * g.perPage;
+                while (newIndex < n && !options[newIndex].enabled) newIndex++;
+                if (newIndex < n) index = newIndex;
+                redraw = true;
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+                continue;
+            }
+        }
+#endif
 
         if (PrevPress || check(UpPress)) {
             devModeCounter = 0;
@@ -1410,7 +1578,15 @@ void jpegRender(int xpos, int ypos) {
     uint32_t max_y = JpegDec.height;
 
     bool swapBytes = tft.getSwapBytes();
+#if defined(USE_ARDUINO_GFX)
+    // Arduino_GFX's drawPixel/pushImage take a NATIVE uint16_t RGB565, which is
+    // exactly what JPEGDecoder produces on ESP32 (its SWAP_BYTES path is
+    // ESP8266-only). Forcing a byte swap here scrambles the colours into
+    // "psychedelic" rainbow noise — so leave the bytes unswapped on this backend.
+    tft.setSwapBytes(false);
+#else
     tft.setSwapBytes(true);
+#endif
 
     // Jpeg images are draw as a set of image block (tiles) called Minimum Coding Units (MCUs)
     // Typically these MCUs are 16x16 pixel blocks

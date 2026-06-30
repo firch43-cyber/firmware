@@ -520,9 +520,11 @@ String generalKeyboard(
 // btns_layout[][0] = button left-x, [1] = button width, [2] = label left-x.
 #if defined(HAS_TOUCH)
     // Divide full screen width equally among all buttons with 3px gaps.
+    // Fixed-size array (max 6 buttons) avoids a VLA in a template — VLAs in
+    // template functions break GCC LTO and drop the entire translation unit.
     const int _gap = 3;
     const int _bw  = (tftWidth - (buttons_number + 1) * _gap) / buttons_number;
-    int btns_layout[buttons_number][3];
+    int btns_layout[6][3] = {};
     for (int _bi = 0; _bi < buttons_number; _bi++) {
         btns_layout[_bi][0] = _gap + _bi * (_bw + _gap);
         btns_layout[_bi][1] = _bw;

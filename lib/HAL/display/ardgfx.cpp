@@ -53,7 +53,15 @@ tft_display::tft_display(int16_t _W, int16_t _H) : _height(_H), _width(_W) {
         TFT_VSYNC_PULSE_WIDTH,
         TFT_VSYNC_BACK_PORCH,
         TFT_PCLK_ACTIVE_NEG,
-        TFT_PREF_SPEED
+        TFT_PREF_SPEED,
+        false,  // useBigEndian
+        0,      // de_idle_high
+        0,      // pclk_idle_high
+#if defined(RGB_PANEL) && defined(TFT_BOUNCE_LINES)
+        (TFT_WIDTH) * (TFT_BOUNCE_LINES)  // SRAM bounce buffer — decouples DMA from PSRAM
+#else
+        0
+#endif
     );
     #if !defined(TFT_WIDTH) || !defined(TFT_HEIGHT)
         #error "Missing Macros definitions of: TFT_WIDTH, TFT_HEIGHT"

@@ -130,66 +130,107 @@ void _setBrightness(uint8_t brightval) {
 /*********************************************************************
 ** Function: InputHandler
 ** Handles PrevPress, NextPress, SelPress, AnyKeyPress and EscPress
+**
+** Gesture detection (800×480 touch screen):
+**   Swipe LEFT  (dx < -60px, dominant axis) → NextPress
+**   Swipe RIGHT (dx >  60px, dominant axis) → PrevPress
+**   Swipe DOWN  (dy >  80px, dominant axis) → EscPress  (go back)
+**   Tap         (movement < 30px)           → existing tap behaviour
 **********************************************************************/
 void InputHandler(void) {
 #if defined(HAS_CAPACITIVE_TOUCH) && defined(TOUCH_GT911_I2C)
-    static long d_tmp = 0;
-    if (millis() - d_tmp > 200 || LongPress) {
-        static unsigned long tm = millis();
-        TouchPointPro t;
-        uint8_t touched = 0;
-        static uint8_t rot = 5;
+    static uint8_t  rot           = 5;
+    static bool     lastTouch     = false;
+    static unsigned long lastTouchTime = 0;
+    static int16_t  startX = 0, startY = 0;   // position when finger touched down
+    static int16_t  lastX  = 0, lastY  = 0;   // most recent position while held
+    static unsigned long touchDownTime = 0;
 
-        if (rot != bruceConfigPins.rotation) {
-            if (bruceConfigPins.rotation == 1) {
-                touch.setMaxCoordinates(TFT_HEIGHT, TFT_WIDTH);
-                touch.setSwapXY(true);
-                touch.setMirrorXY(false, true);
-            }
-            if (bruceConfigPins.rotation == 3) {
-                touch.setMaxCoordinates(TFT_HEIGHT, TFT_WIDTH);
-                touch.setSwapXY(true);
-                touch.setMirrorXY(true, false);
-            }
-            if (bruceConfigPins.rotation == 0) {
-                touch.setMaxCoordinates(TFT_WIDTH, TFT_HEIGHT);
-                touch.setSwapXY(false);
-                touch.setMirrorXY(false, false);
-            }
-            if (bruceConfigPins.rotation == 2) {
-                touch.setMaxCoordinates(TFT_WIDTH, TFT_HEIGHT);
-                touch.setSwapXY(false);
-                touch.setMirrorXY(true, true);
-            }
-            rot = bruceConfigPins.rotation;
+    // Update rotation mapping when config changes
+    if (rot != bruceConfigPins.rotation) {
+        if (bruceConfigPins.rotation == 1) {
+            touch.setMaxCoordinates(TFT_HEIGHT, TFT_WIDTH);
+            touch.setSwapXY(true);
+            touch.setMirrorXY(false, true);
+        } else if (bruceConfigPins.rotation == 3) {
+            touch.setMaxCoordinates(TFT_HEIGHT, TFT_WIDTH);
+            touch.setSwapXY(true);
+            touch.setMirrorXY(true, false);
+        } else if (bruceConfigPins.rotation == 0) {
+            touch.setMaxCoordinates(TFT_WIDTH, TFT_HEIGHT);
+            touch.setSwapXY(false);
+            touch.setMirrorXY(false, false);
+        } else if (bruceConfigPins.rotation == 2) {
+            touch.setMaxCoordinates(TFT_WIDTH, TFT_HEIGHT);
+            touch.setSwapXY(false);
+            touch.setMirrorXY(true, true);
         }
+        rot = bruceConfigPins.rotation;
+    }
 
-        static bool lastTouchState = false;
-        static unsigned long lastTouchTime = 0;
+    TouchPointPro t;
+    uint8_t touched = touch.getPoint(&t.x, &t.y);
+    bool currentTouch = (touched > 0);
 
-        touched = touch.getPoint(&t.x, &t.y);
-        bool currentTouchState = touched > 0;
+    // Track last known position while finger is down
+    if (currentTouch) { lastX = t.x; lastY = t.y; }
 
-        if (currentTouchState && !lastTouchState && (millis() - lastTouchTime) > 100) {
+    // ---- Rising edge: finger touched down ----
+    if (currentTouch && !lastTouch) {
+        if ((millis() - lastTouchTime) > 100) {
+            startX       = lastX;
+            startY       = lastY;
+            touchDownTime = millis();
             lastTouchTime = millis();
-        } else if (!currentTouchState || lastTouchState) {
-            touched = 0;
-        }
-        lastTouchState = currentTouchState;
-
-        if (((millis() - tm) > 190 || LongPress) && touched) {
-            tm = millis();
-            if (!wakeUpScreen()) AnyKeyPress = true;
-            else goto END;
-
-            touchPoint.x = t.x;
-            touchPoint.y = t.y;
-            touchPoint.pressed = true;
-            touchHeatMap(touchPoint);
-        END:
-            d_tmp = millis();
         }
     }
+
+    // ---- Falling edge: finger lifted ----
+    if (!currentTouch && lastTouch) {
+        int16_t dx = lastX - startX;
+        int16_t dy = lastY - startY;
+        int16_t adx = abs(dx), ady = abs(dy);
+
+        const int SWIPE_H = 60;   // min horizontal distance for left/right swipe
+        const int SWIPE_V = 80;   // min vertical distance for down-swipe (back)
+        const int TAP_MAX = 30;   // max movement to still count as a tap
+
+        bool isWake = wakeUpScreen();
+
+        if (adx > SWIPE_H && adx > ady) {
+            // Horizontal swipe
+            if (!isWake) {
+                AnyKeyPress = true;
+                if (dx < 0) NextPress = true;   // swipe left  → next
+                else        PrevPress = true;    // swipe right → prev
+            }
+        } else if (dy > SWIPE_V && ady > adx) {
+            // Downward swipe → back/escape
+            if (!isWake) { AnyKeyPress = true; EscPress = true; }
+        } else if (adx < TAP_MAX && ady < TAP_MAX) {
+            // Tap
+            if (!isWake) {
+                AnyKeyPress   = true;
+                touchPoint.x  = startX;
+                touchPoint.y  = startY;
+                touchPoint.pressed = true;
+                touchHeatMap(touchPoint);
+            }
+        }
+    }
+
+    // LongPress path: fire while held after 500 ms, same as tap
+    if (LongPress && currentTouch) {
+        if (!wakeUpScreen()) {
+            AnyKeyPress       = true;
+            touchPoint.x      = lastX;
+            touchPoint.y      = lastY;
+            touchPoint.pressed = true;
+            touchHeatMap(touchPoint);
+        }
+    }
+
+    lastTouch = currentTouch;
 #else
     checkPowerSaveTime();
     PrevPress = false;

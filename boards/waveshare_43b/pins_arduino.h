@@ -63,17 +63,31 @@
 #define TFT_VSYNC_PULSE_WIDTH  4
 #define TFT_VSYNC_BACK_PORCH   8
 #define TFT_PCLK_ACTIVE_NEG    1
-#define TFT_PREF_SPEED         (16 * 1000 * 1000)   // 16 MHz pixel clock
+#define TFT_PREF_SPEED         (14 * 1000 * 1000)   // 14 MHz — margin below 16 MHz max to reduce glitching under bus load
+// Bounce buffer: scan lines of SRAM cache between PSRAM framebuffer and LCD DMA.
+// Prevents the double/tiled image glitch when PSRAM bus is stressed (WiFi+SD),
+// and the transient vertical slip during heavy full-screen redraws (theme
+// change / gradient settings screens). More lines = more slack to ride out a
+// CPU/PSRAM burst before the panel underruns. Must stay an even divisor of 480.
+#define TFT_BOUNCE_LINES       24
 
 // ---- Bruce display behaviour ------------------------------------------------
 #define HAS_SCREEN
 #define ROTATION    0
 #define MINBRIGHT   (uint8_t)1
 
-// Font sizes
-#define FP 1
-#define FM 2
-#define FG 3
+// Embed a full-color boot splash (breaching great white) into the firmware so
+// every device shows it with no SD card. A user /boot.jpg or /boot.gif on SD
+// or LittleFS still overrides it. See boards/waveshare_43b/boot_shark.h.
+#define BOOT_IMG_EMBEDDED
+// Enable the Android-style 4×2 icon grid for the 800×480 main menu
+#define GRID_MAIN_MENU
+
+// Font sizes — scaled up for 800×480 (CYD default is 1/2/3 for a 240px screen).
+// At the Adafruit GFX base glyph (6×8 px): FP=2→12×16, FM=3→18×24, FG=5→30×40.
+#define FP 2
+#define FM 3
+#define FG 5
 
 // ---- I2C bus (CH422G expander + GT911 touch share this bus) -----------------
 #define GROVE_SDA  8
